@@ -21,6 +21,7 @@ import net.corda.node.services.statemachine.SubFlowVersion
 import net.corda.node.services.transactions.PersistentUniquenessProvider
 import net.corda.nodeapi.internal.persistence.CordaPersistence
 import net.corda.nodeapi.internal.persistence.DatabaseConfig
+import net.corda.nodeapi.internal.persistence.DatabaseTransaction
 import net.corda.testing.core.ALICE_NAME
 import net.corda.testing.core.SerializationEnvironmentRule
 import net.corda.testing.core.TestIdentity
@@ -147,19 +148,34 @@ class DBCheckpointStorageTests {
         }
         database.transaction {
             assertEquals(
-                    completedCheckpoint,
-                    checkpointStorage.checkpoints().single().deserialize()
+                completedCheckpoint,
+                checkpointStorage.checkpoints().single().deserialize()
             )
         }
     }
 
     @Test(timeout = 300_000)
-    fun `remove checkpoint`() {
+    fun `removing a checkpoint deletes from all checkpoint tables`() {
+        val exception = IllegalStateException("I am a naughty exception")
         val (id, checkpoint) = newCheckpoint()
         val serializedFlowState = checkpoint.serializeFlowState()
         database.transaction {
             checkpointStorage.addCheckpoint(id, checkpoint, serializedFlowState)
         }
+        val updatedCheckpoint = checkpoint.addError(exception).copy(result = "The result")
+        val updatedSerializedFlowState = updatedCheckpoint.serializeFlowState()
+        database.transaction { checkpointStorage.updateCheckpoint(id, updatedCheckpoint, updatedSerializedFlowState) }
+
+        database.transaction {
+            assertEquals(1, findRecordsFromDatabase<DBCheckpointStorage.DBFlowException>().size)
+            // The result not stored yet
+            assertEquals(0, findRecordsFromDatabase<DBCheckpointStorage.DBFlowResult>().size)
+            assertEquals(1, findRecordsFromDatabase<DBCheckpointStorage.DBFlowMetadata>().size)
+            // The saving of checkpoint blobs needs to be fixed
+            assertEquals(2, findRecordsFromDatabase<DBCheckpointStorage.DBFlowCheckpointBlob>().size)
+            assertEquals(1, findRecordsFromDatabase<DBCheckpointStorage.DBFlowCheckpoint>().size)
+        }
+
         database.transaction {
             checkpointStorage.removeCheckpoint(id)
         }
@@ -169,6 +185,101 @@ class DBCheckpointStorageTests {
         newCheckpointStorage()
         database.transaction {
             assertThat(checkpointStorage.checkpoints()).isEmpty()
+        }
+
+        database.transaction {
+            assertEquals(0, findRecordsFromDatabase<DBCheckpointStorage.DBFlowException>().size)
+            assertEquals(0, findRecordsFromDatabase<DBCheckpointStorage.DBFlowResult>().size)
+            assertEquals(0, findRecordsFromDatabase<DBCheckpointStorage.DBFlowMetadata>().size)
+            // The saving of checkpoint blobs needs to be fixed
+            assertEquals(1, findRecordsFromDatabase<DBCheckpointStorage.DBFlowCheckpointBlob>().size)
+            assertEquals(0, findRecordsFromDatabase<DBCheckpointStorage.DBFlowCheckpoint>().size)
+        }
+    }
+
+    @Test(timeout = 300_000)
+    fun `removing a checkpoint when there is no result does not fail`() {
+        val exception = IllegalStateException("I am a naughty exception")
+        val (id, checkpoint) = newCheckpoint()
+        val serializedFlowState = checkpoint.serializeFlowState()
+        database.transaction {
+            checkpointStorage.addCheckpoint(id, checkpoint, serializedFlowState)
+        }
+        val updatedCheckpoint = checkpoint.addError(exception)
+        val updatedSerializedFlowState = updatedCheckpoint.serializeFlowState()
+        database.transaction { checkpointStorage.updateCheckpoint(id, updatedCheckpoint, updatedSerializedFlowState) }
+
+        database.transaction {
+            assertEquals(1, findRecordsFromDatabase<DBCheckpointStorage.DBFlowException>().size)
+            // The result not stored yet
+            assertEquals(0, findRecordsFromDatabase<DBCheckpointStorage.DBFlowResult>().size)
+            assertEquals(1, findRecordsFromDatabase<DBCheckpointStorage.DBFlowMetadata>().size)
+            // The saving of checkpoint blobs needs to be fixed
+            assertEquals(2, findRecordsFromDatabase<DBCheckpointStorage.DBFlowCheckpointBlob>().size)
+            assertEquals(1, findRecordsFromDatabase<DBCheckpointStorage.DBFlowCheckpoint>().size)
+        }
+
+        database.transaction {
+            checkpointStorage.removeCheckpoint(id)
+        }
+        database.transaction {
+            assertThat(checkpointStorage.checkpoints()).isEmpty()
+        }
+        newCheckpointStorage()
+        database.transaction {
+            assertThat(checkpointStorage.checkpoints()).isEmpty()
+        }
+
+        database.transaction {
+            assertEquals(0, findRecordsFromDatabase<DBCheckpointStorage.DBFlowException>().size)
+            assertEquals(0, findRecordsFromDatabase<DBCheckpointStorage.DBFlowResult>().size)
+            assertEquals(0, findRecordsFromDatabase<DBCheckpointStorage.DBFlowMetadata>().size)
+            // The saving of checkpoint blobs needs to be fixed
+            assertEquals(1, findRecordsFromDatabase<DBCheckpointStorage.DBFlowCheckpointBlob>().size)
+            assertEquals(0, findRecordsFromDatabase<DBCheckpointStorage.DBFlowCheckpoint>().size)
+        }
+    }
+
+    @Test(timeout = 300_000)
+    fun `removing a checkpoint when there is no exception does not fail`() {
+        val exception = IllegalStateException("I am a naughty exception")
+        val (id, checkpoint) = newCheckpoint()
+        val serializedFlowState = checkpoint.serializeFlowState()
+        database.transaction {
+            checkpointStorage.addCheckpoint(id, checkpoint, serializedFlowState)
+        }
+        val updatedCheckpoint = checkpoint.copy(result = "The result")
+        val updatedSerializedFlowState = updatedCheckpoint.serializeFlowState()
+        database.transaction { checkpointStorage.updateCheckpoint(id, updatedCheckpoint, updatedSerializedFlowState) }
+
+        database.transaction {
+            assertEquals(0, findRecordsFromDatabase<DBCheckpointStorage.DBFlowException>().size)
+            // The result not stored yet
+            assertEquals(0, findRecordsFromDatabase<DBCheckpointStorage.DBFlowResult>().size)
+            assertEquals(1, findRecordsFromDatabase<DBCheckpointStorage.DBFlowMetadata>().size)
+            // The saving of checkpoint blobs needs to be fixed
+            assertEquals(2, findRecordsFromDatabase<DBCheckpointStorage.DBFlowCheckpointBlob>().size)
+            assertEquals(1, findRecordsFromDatabase<DBCheckpointStorage.DBFlowCheckpoint>().size)
+        }
+
+        database.transaction {
+            checkpointStorage.removeCheckpoint(id)
+        }
+        database.transaction {
+            assertThat(checkpointStorage.checkpoints()).isEmpty()
+        }
+        newCheckpointStorage()
+        database.transaction {
+            assertThat(checkpointStorage.checkpoints()).isEmpty()
+        }
+
+        database.transaction {
+            assertEquals(0, findRecordsFromDatabase<DBCheckpointStorage.DBFlowException>().size)
+            assertEquals(0, findRecordsFromDatabase<DBCheckpointStorage.DBFlowResult>().size)
+            assertEquals(0, findRecordsFromDatabase<DBCheckpointStorage.DBFlowMetadata>().size)
+            // The saving of checkpoint blobs needs to be fixed
+            assertEquals(1, findRecordsFromDatabase<DBCheckpointStorage.DBFlowCheckpointBlob>().size)
+            assertEquals(0, findRecordsFromDatabase<DBCheckpointStorage.DBFlowCheckpoint>().size)
         }
     }
 
@@ -340,9 +451,7 @@ class DBCheckpointStorageTests {
                 checkpointStorage.getCheckpoint(id)!!.deserialize().result
             )
             assertNotNull(session.get(DBCheckpointStorage.DBFlowCheckpoint::class.java, id.uuid.toString()).result)
-            val criteria = session.criteriaBuilder.createQuery(DBCheckpointStorage.DBFlowResult::class.java)
-            criteria.select(criteria.from(DBCheckpointStorage.DBFlowResult::class.java))
-            assertEquals(1, session.createQuery(criteria).resultList.size)
+            assertEquals(1, findRecordsFromDatabase<DBCheckpointStorage.DBFlowResult>().size)
         }
     }
 
@@ -373,9 +482,7 @@ class DBCheckpointStorageTests {
                 checkpointStorage.getCheckpoint(id)!!.deserialize().result
             )
             assertNotNull(session.get(DBCheckpointStorage.DBFlowCheckpoint::class.java, id.uuid.toString()).result)
-            val criteria = session.criteriaBuilder.createQuery(DBCheckpointStorage.DBFlowResult::class.java)
-            criteria.select(criteria.from(DBCheckpointStorage.DBFlowResult::class.java))
-            assertEquals(1, session.createQuery(criteria).resultList.size)
+            assertEquals(1, findRecordsFromDatabase<DBCheckpointStorage.DBFlowResult>().size)
         }
     }
 
@@ -401,9 +508,7 @@ class DBCheckpointStorageTests {
         database.transaction {
             assertNull(checkpointStorage.getCheckpoint(id)!!.deserialize().result)
             assertNull(session.get(DBCheckpointStorage.DBFlowCheckpoint::class.java, id.uuid.toString()).result)
-            val criteria = session.criteriaBuilder.createQuery(DBCheckpointStorage.DBFlowResult::class.java)
-            criteria.select(criteria.from(DBCheckpointStorage.DBFlowResult::class.java))
-            assertEquals(0, session.createQuery(criteria).resultList.size)
+            assertEquals(0, findRecordsFromDatabase<DBCheckpointStorage.DBFlowResult>().size)
         }
     }
 
@@ -425,9 +530,7 @@ class DBCheckpointStorageTests {
             assertNotNull(exceptionDetails)
             assertEquals(exception::class.java, exceptionDetails!!.type)
             assertEquals(exception.message, exceptionDetails.message)
-            val criteria = session.criteriaBuilder.createQuery(DBCheckpointStorage.DBFlowException::class.java)
-            criteria.select(criteria.from(DBCheckpointStorage.DBFlowException::class.java))
-            assertEquals(1, session.createQuery(criteria).resultList.size)
+            assertEquals(1,  findRecordsFromDatabase<DBCheckpointStorage.DBFlowException>().size)
         }
     }
 
@@ -453,9 +556,7 @@ class DBCheckpointStorageTests {
             assertNotNull(exceptionDetails)
             assertEquals(illegalArgumentException::class.java, exceptionDetails!!.type)
             assertEquals(illegalArgumentException.message, exceptionDetails.message)
-            val criteria = session.criteriaBuilder.createQuery(DBCheckpointStorage.DBFlowException::class.java)
-            criteria.select(criteria.from(DBCheckpointStorage.DBFlowException::class.java))
-            assertEquals(1, session.createQuery(criteria).resultList.size)
+            assertEquals(1,  findRecordsFromDatabase<DBCheckpointStorage.DBFlowException>().size)
         }
     }
 
@@ -479,9 +580,7 @@ class DBCheckpointStorageTests {
         database.transaction {
             assertTrue(checkpointStorage.getCheckpoint(id)!!.deserialize().errorState is ErrorState.Clean)
             assertNull(session.get(DBCheckpointStorage.DBFlowCheckpoint::class.java, id.uuid.toString()).exceptionDetails)
-            val criteria = session.criteriaBuilder.createQuery(DBCheckpointStorage.DBFlowException::class.java)
-            criteria.select(criteria.from(DBCheckpointStorage.DBFlowException::class.java))
-            assertEquals(0, session.createQuery(criteria).resultList.size)
+            assertEquals(0,  findRecordsFromDatabase<DBCheckpointStorage.DBFlowException>().size)
         }
     }
 
@@ -526,7 +625,7 @@ class DBCheckpointStorageTests {
         database.transaction {
             val newCheckpoint = checkpoint.copy(progressStep = longString)
             val serializedFlowState = newCheckpoint.flowState.checkpointSerialize(
-                    context = CheckpointSerializationDefaults.CHECKPOINT_CONTEXT
+                context = CheckpointSerializationDefaults.CHECKPOINT_CONTEXT
             )
             checkpointStorage.updateCheckpoint(id, newCheckpoint, serializedFlowState)
         }
@@ -551,7 +650,7 @@ class DBCheckpointStorageTests {
 
         database.transaction {
             val serializedFlowState =
-                    checkpoint.flowState.checkpointSerialize(context = CheckpointSerializationDefaults.CHECKPOINT_CONTEXT)
+                checkpoint.flowState.checkpointSerialize(context = CheckpointSerializationDefaults.CHECKPOINT_CONTEXT)
 
             checkpointStorage.addCheckpoint(StateMachineRunId.createRandom(), runnable, serializedFlowState)
             checkpointStorage.addCheckpoint(StateMachineRunId.createRandom(), hospitalized, serializedFlowState)
@@ -620,5 +719,11 @@ class DBCheckpointStorageTests {
                 ), 0, false
             )
         )
+    }
+
+    private inline fun <reified T> DatabaseTransaction.findRecordsFromDatabase(): List<T> {
+        val criteria = session.criteriaBuilder.createQuery(T::class.java)
+        criteria.select(criteria.from(T::class.java))
+        return session.createQuery(criteria).resultList
     }
 }

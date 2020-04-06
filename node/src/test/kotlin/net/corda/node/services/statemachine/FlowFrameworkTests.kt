@@ -41,6 +41,7 @@ import net.corda.core.utilities.unwrap
 import net.corda.node.services.persistence.CheckpointPerformanceRecorder
 import net.corda.node.services.persistence.DBCheckpointStorage
 import net.corda.node.services.persistence.checkpoints
+import net.corda.nodeapi.internal.persistence.DatabaseTransaction
 import net.corda.nodeapi.internal.persistence.contextDatabase
 import net.corda.nodeapi.internal.persistence.contextTransaction
 import net.corda.nodeapi.internal.persistence.contextTransactionOrNull
@@ -343,7 +344,7 @@ class FlowFrameworkTests {
 
     //We should update this test when we do the work to persists the flow result.
     @Test(timeout = 300_000)
-    fun `Flow status is set to completed in database when the flow finishes and serialised flow state is null`() {
+    fun `Checkpoint and all its related records are deleted when the flow finishes`() {
         val terminationSignal = Semaphore(0)
         val flow = aliceNode.services.startFlow(NoOpFlow( terminateUponSignal = terminationSignal))
         mockNet.waitQuiescent() // current thread needs to wait fiber running on a different thread, has reached the blocking point
@@ -357,9 +358,10 @@ class FlowFrameworkTests {
         mockNet.waitQuiescent()
         aliceNode.database.transaction {
             val checkpoint = dbCheckpointStorage.getCheckpoint(flow.id)
-            assertNull(checkpoint!!.result)
-            assertNull(checkpoint.serializedFlowState)
-            assertEquals(Checkpoint.FlowStatus.COMPLETED, checkpoint.status)
+            assertNull(checkpoint)
+            assertEquals(0, findRecordsFromDatabase<DBCheckpointStorage.DBFlowMetadata>().size)
+            assertEquals(0, findRecordsFromDatabase<DBCheckpointStorage.DBFlowCheckpointBlob>().size)
+            assertEquals(0, findRecordsFromDatabase<DBCheckpointStorage.DBFlowCheckpoint>().size)
         }
     }
 
@@ -723,6 +725,12 @@ class FlowFrameworkTests {
         assertEquals(Checkpoint.FlowStatus.RUNNABLE, checkpointStatusInMemory)
 
         SuspendingFlow.hookAfterCheckpoint = {}
+    }
+
+    private inline fun <reified T> DatabaseTransaction.findRecordsFromDatabase(): List<T> {
+        val criteria = session.criteriaBuilder.createQuery(T::class.java)
+        criteria.select(criteria.from(T::class.java))
+        return session.createQuery(criteria).resultList
     }
 
     // the following method should be removed when implementing CORDA-3604.
