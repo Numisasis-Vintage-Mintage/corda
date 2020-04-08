@@ -1,0 +1,27 @@
+Numisasis-Vintage-Mintage/corda
+
+corda/corda
+
+Branch: corda: release/os/4.5.
+
+remaisa54 corda/finance/workflows/src/main/kotlin/net/corda/finance/flows/
+
+CORDA-3033: Introducing Destination interface for initiating flows wi… …
+
+Files:
+
+AbstractCashFlow.ktCORDA-2331 Split Workflow and contracts of Finance App into separate …  CashExitFlow.ktCORDA-2467: Moved non-contract things out of finance-contracts and in… CashIssueAndPaymentFlow.kt[CORDA-2738] Allow the ProgressTracker to cope with child trackers wi…CashIssueFlow.ktCORDA-2331 CashPaymentFlow.ktCORDA-3033: Introducing Destination interface for initiating flows wi…TwoPartyDealFlow.kt[CORDA-2390] - Add whitelists and custom serializers from cordapps to…TwoPartyTradeFlow.ktCORDA-2467: Moved non-contract things out of finance-contracts and in…
+
+
+
+
+
+
+
+
+
+
+
+
+
+
